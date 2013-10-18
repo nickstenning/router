@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"fmt"
 	"github.com/alphagov/router/triemux"
 	"labix.org/v2/mgo"
@@ -181,6 +182,7 @@ func newBackendTransport() (transport *backendTransport) {
 	// Allow the proxy to keep more than the default (2) keepalive connections
 	// per upstream.
 	transport.wrapped.MaxIdleConnsPerHost = 20
+	transport.wrapped.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	return
 }
 
@@ -190,6 +192,9 @@ type backendTransport struct {
 
 func (bt *backendTransport) RoundTrip(req *http.Request) (resp *http.Response, err error) {
 	resp, err = bt.wrapped.RoundTrip(req)
+	if err != nil {
+		log.Printf("backend_transport: error in request: %v", err)
+	}
 	populateViaHeader(resp.Header, fmt.Sprintf("%d.%d", resp.ProtoMajor, resp.ProtoMinor))
 	return
 }

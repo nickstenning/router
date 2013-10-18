@@ -140,4 +140,18 @@ describe "functioning as a reverse proxy" do
       expect(data["Request"]["Proto"]).to eq("HTTP/1.1")
     end
   end
+
+  describe "ssl backend" do
+    start_backend_around_all :port => 3164, :type => :ssl, :identifier => "ssl backend"
+
+    it "should support ssl backends" do
+      add_backend "ssl", "https://localhost:3164/"
+      add_backend_route "/foo", "ssl", :prefix => true
+      reload_routes
+
+      response = HTTPClient.get(router_url("/foo"), :header => {"Connection" => "close"})
+      expect(response.code).to eq(200)
+      expect(response).to have_response_body("ssl backend")
+    end
+  end
 end

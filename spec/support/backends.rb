@@ -25,7 +25,7 @@ module BackendHelpers
       command << "-port=#{port}"
       command += options.map {|k, v| "-#{k}=#{v}" }
 
-      pid = spawn(*command, :pgroup => true, :out => "/dev/null", :err => "/dev/null")
+      pid = spawn(*command, :pgroup => true, :out => "/dev/null", :err => "/dev/null", :chdir => File.dirname(test_backend_path("simple")))
 
       retries = 0
       begin
