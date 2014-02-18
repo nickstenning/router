@@ -22,6 +22,7 @@ describe "error handling" do
         "request" => "GET /boom HTTP/1.1",
         "request_method" => "GET",
         "status" => 500,
+        "govuk_request_id" => "",
         "varnish_id" => "",
       })
       expect(Time.parse(log_details["@timestamp"]).to_i).to be_within(5).of(Time.now.to_i)

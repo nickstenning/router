@@ -19,6 +19,7 @@ describe "functioning as a reverse proxy" do
       reload_routes
 
       response = HTTPClient.get(router_url("/not-running"), :header => {
+        "GOVUK-Request-Id" => "cache-2-23456",
         "X-Varnish" => "12345678",
       })
       expect(response.code).to eq(502)
@@ -30,6 +31,7 @@ describe "functioning as a reverse proxy" do
         "request_method" => "GET",
         "status" => 502,
         "upstream_addr" => "localhost:3164",
+        "govuk_request_id" => "cache-2-23456",
         "varnish_id" => "12345678",
       })
       expect(Time.parse(log_details["@timestamp"]).to_i).to be_within(5).of(Time.now.to_i)
@@ -54,6 +56,7 @@ describe "functioning as a reverse proxy" do
 
         start = Time.now
         response = HTTPClient.get(router_url("/blocked", 3167), :header => {
+          "Govuk-Request-Id" => "cache-2-23456",
           "X-Varnish" => "12341111",
         })
         duration = Time.now - start
@@ -68,6 +71,7 @@ describe "functioning as a reverse proxy" do
           "request_method" => "GET",
           "status" => 504,
           "upstream_addr" => "localhost:3170",
+          "govuk_request_id" => "cache-2-23456",
           "varnish_id" => "12341111",
         })
         expect(Time.parse(log_details["@timestamp"]).to_i).to be_within(5).of(Time.now.to_i)
@@ -89,6 +93,7 @@ describe "functioning as a reverse proxy" do
 
       it "should log and return a 504 if a backend takes longer than the configured response timeout to start returning a response" do
         response = HTTPClient.get(router_url("/tarpit1", 3167), :header => {
+          "Govuk-Request-Id" => "cache-2-23456",
           "X-Varnish" => "12341112",
         })
         expect(response.code).to eq(504)
@@ -100,6 +105,7 @@ describe "functioning as a reverse proxy" do
           "request_method" => "GET",
           "status" => 504,
           "upstream_addr" => "localhost:3160",
+          "govuk_request_id" => "cache-2-23456",
           "varnish_id" => "12341112",
         })
         expect(Time.parse(log_details["@timestamp"]).to_i).to be_within(5).of(Time.now.to_i)
@@ -277,6 +283,7 @@ describe "functioning as a reverse proxy" do
         "request_method" => "GET",
         "status" => 400,
         "upstream_addr" => "localhost:3163",
+        "govuk_request_id" => "",
         "varnish_id" => "",
       })
     end
@@ -293,6 +300,7 @@ describe "functioning as a reverse proxy" do
         "request_method" => "GET",
         "status" => 400,
         "upstream_addr" => "localhost:3163",
+        "govuk_request_id" => "",
         "varnish_id" => "",
       })
     end
