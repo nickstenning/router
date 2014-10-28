@@ -5,6 +5,7 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/ghttp"
 )
 
 var _ = Describe("Backend selection", func() {
@@ -325,21 +326,21 @@ var _ = Describe("Backend selection", func() {
 	Describe("double slashes", func() {
 		var (
 			root *httptest.Server
-			//other *httptest.Server
+			recorder *ghttp.Server
 		)
 
 		BeforeEach(func() {
 			root = startSimpleBackend("fallthrough")
-			//other = startEchoBackend("other")
+			recorder = startRecordingBackend()
 			addBackend("root", root.URL)
-			//addBackend("other", other.URL)
+			addBackend("other", recorder.URL())
 			addBackendRoute("/", "root", "prefix")
-			//addBackendRoute("/foo/bar", "other", "prefix")
+			addBackendRoute("/foo/bar", "other", "prefix")
 			reloadRoutes()
 		})
 		AfterEach(func() {
 			root.Close()
-			//other.Close()
+			recorder.Close()
 		})
 
 		It("should not be redirected by our simple test backend", func() {
@@ -347,10 +348,20 @@ var _ = Describe("Backend selection", func() {
 			Expect(readBody(resp)).To(Equal("fallthrough"))
 		})
 
-		PIt("should not be redirected by our echo test backend", func() {
+		It("should not be redirected by our recorder backend", func() {
+			resp := routerRequest("/foo/bar/baz//qux")
+			Expect(resp.StatusCode).To(Equal(200))
+			Expect(readBody(resp)).To(Equal("recorder"))
+			Expect(recorder.ReceivedRequests()).To(HaveLen(1))
+			Expect(recorder.ReceivedRequests()[0].URL.Path).To(Equal("/foo/bar/baz//qux"))
 		})
 
-		PIt("should collapse double slashes when looking up route, but pass request as-is", func() {
+		It("should collapse double slashes when looking up route, but pass request as-is", func() {
+			resp := routerRequest("/foo//bar")
+			Expect(resp.StatusCode).To(Equal(200))
+			Expect(readBody(resp)).To(Equal("recorder"))
+			Expect(recorder.ReceivedRequests()).To(HaveLen(1))
+			Expect(recorder.ReceivedRequests()[0].URL.Path).To(Equal("/foo//bar"))
 		})
 	})
 })

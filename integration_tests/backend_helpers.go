@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"time"
+
+	"github.com/onsi/gomega/ghttp"
 )
 
 func startSimpleBackend(identifier string) *httptest.Server {
@@ -37,4 +39,12 @@ func startTarpitBackend(delays ...time.Duration) *httptest.Server {
 		}
 		w.Write([]byte(body))
 	}))
+}
+
+func startRecordingBackend() *ghttp.Server {
+	server := ghttp.NewServer()
+	server.AppendHandlers(ghttp.RespondWith(http.StatusOK, "recorder"))
+	//server.AllowUnhandledRequests = true
+	//server.UnhandledRequestStatusCode = http.StatusOK
+	return server
 }
