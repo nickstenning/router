@@ -151,6 +151,7 @@ func loadRoutes(c *mgo.Collection, mux *triemux.Mux, backends map[string]http.Ha
 
 	for iter.Next(&route) {
 		prefix := (route.RouteType == "prefix")
+		suffix := (route.RouteType == "suffix")
 		switch route.Handler {
 		case "backend":
 			handler, ok := backends[route.BackendId]
@@ -159,27 +160,27 @@ func loadRoutes(c *mgo.Collection, mux *triemux.Mux, backends map[string]http.Ha
 					"%s, skipping!", route, route.BackendId))
 				continue
 			}
-			mux.Handle(route.IncomingPath, prefix, handler)
-			logDebug(fmt.Sprintf("router: registered %s (prefix: %v) for %s",
-				route.IncomingPath, prefix, route.BackendId))
+			mux.Handle(route.IncomingPath, prefix, suffix, handler)
+			logDebug(fmt.Sprintf("router: registered %s (prefix: %v, suffix: %v) for %s",
+				route.IncomingPath, prefix, suffix, route.BackendId))
 		case "redirect":
 			redirectTemporarily := (route.RedirectType == "temporary")
 			handler := handlers.NewRedirectHandler(route.IncomingPath, route.RedirectTo, prefix, redirectTemporarily)
-			mux.Handle(route.IncomingPath, prefix, handler)
-			logDebug(fmt.Sprintf("router: registered %s (prefix: %v) -> %s",
-				route.IncomingPath, prefix, route.RedirectTo))
+			mux.Handle(route.IncomingPath, prefix, suffix, handler)
+			logDebug(fmt.Sprintf("router: registered %s (prefix: %v, suffix: %v) -> %s",
+				route.IncomingPath, prefix, suffix, route.RedirectTo))
 		case "gone":
 			handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(http.StatusGone)
 			})
-			mux.Handle(route.IncomingPath, prefix, handler)
-			logDebug(fmt.Sprintf("router: registered %s (prefix: %v) -> Gone", route.IncomingPath, prefix))
+			mux.Handle(route.IncomingPath, prefix, suffix, handler)
+			logDebug(fmt.Sprintf("router: registered %s (prefix: %v, suffix: %v) -> Gone", route.IncomingPath, prefix, suffix))
 		case "boom":
 			// Special handler so that we can test failure behaviour.
-			mux.Handle(route.IncomingPath, prefix, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			mux.Handle(route.IncomingPath, prefix, suffix, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				panic("Boom!!!")
 			}))
-			logDebug(fmt.Sprintf("router: registered %s (prefix: %v) -> Boom!!!", route.IncomingPath, prefix))
+			logDebug(fmt.Sprintf("router: registered %s (prefix: %v, suffix: %v) -> Boom!!!", route.IncomingPath, prefix, suffix))
 		default:
 			logWarn(fmt.Sprintf("router: found route %+v with unknown handler type "+
 				"%s, skipping!", route, route.Handler))

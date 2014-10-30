@@ -17,6 +17,7 @@ type Mux struct {
 	mu         sync.RWMutex
 	exactTrie  *trie.Trie
 	prefixTrie *trie.Trie
+	suffixTrie *trie.Trie
 	count      int
 	checksum   hash.Hash
 }
@@ -28,7 +29,12 @@ type muxEntry struct {
 
 // NewMux makes a new empty Mux.
 func NewMux() *Mux {
-	return &Mux{exactTrie: trie.NewTrie(), prefixTrie: trie.NewTrie(), checksum: sha1.New()}
+	return &Mux{
+		exactTrie:  trie.NewTrie(),
+		prefixTrie: trie.NewTrie(),
+		suffixTrie: trie.NewTrie(),
+		checksum:   sha1.New(),
+	}
 }
 
 // ServeHTTP dispatches the request to a backend with a registered route
@@ -50,7 +56,16 @@ func (mux *Mux) lookup(path string) (handler http.Handler, ok bool) {
 	defer mux.mu.RUnlock()
 
 	pathSegments := splitpath(path)
-	val, ok := mux.exactTrie.Get(pathSegments)
+	reversePathSegments := make([]string, len(pathSegments))
+	last := len(pathSegments) - 1
+	for i, val := range pathSegments {
+		reversePathSegments[last-i] = val
+	}
+
+	val, ok := mux.suffixTrie.GetLongestPrefix(reversePathSegments)
+	if !ok {
+		val, ok = mux.exactTrie.Get(pathSegments)
+	}
 	if !ok {
 		val, ok = mux.prefixTrie.GetLongestPrefix(pathSegments)
 	}
@@ -70,25 +85,29 @@ func (mux *Mux) lookup(path string) (handler http.Handler, ok bool) {
 // Handle registers the specified route (either an exact or a prefix route)
 // and associates it with the specified handler. Requests through the mux for
 // paths matching the route will be passed to that handler.
-func (mux *Mux) Handle(path string, prefix bool, handler http.Handler) {
+func (mux *Mux) Handle(path string, prefix bool, suffix bool, handler http.Handler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	mux.addToStats(path, prefix)
+	mux.addToStats(path, prefix, suffix)
 	if prefix {
-		mux.prefixTrie.Set(splitpath(path), muxEntry{prefix, handler})
+		mux.prefixTrie.Set(splitpath(path), muxEntry{true, handler})
+	} else if suffix {
+		mux.suffixTrie.Set(splitpath(path), muxEntry{true, handler})
 	} else {
-		mux.exactTrie.Set(splitpath(path), muxEntry{prefix, handler})
+		mux.exactTrie.Set(splitpath(path), muxEntry{false, handler})
 	}
 }
 
-func (mux *Mux) addToStats(path string, prefix bool) {
+func (mux *Mux) addToStats(path string, prefix bool, suffix bool) {
 	mux.count++
 	mux.checksum.Write([]byte(path))
 	if prefix {
-		mux.checksum.Write([]byte("(true)"))
+		mux.checksum.Write([]byte("(prefix)"))
+	} else if suffix {
+		mux.checksum.Write([]byte("(suffix)"))
 	} else {
-		mux.checksum.Write([]byte("(false)"))
+		mux.checksum.Write([]byte("(exact)"))
 	}
 }
 
