@@ -63,7 +63,7 @@ var a, b, c *DummyHandler = &DummyHandler{"a"}, &DummyHandler{"b"}, &DummyHandle
 
 type Registration struct {
 	path    string
-	prefix  bool
+	rtype   routeType
 	handler http.Handler
 }
 
@@ -81,8 +81,8 @@ type LookupExample struct {
 var lookupExamples = []LookupExample{
 	{ // simple routes
 		registrations: []Registration{
-			{"/foo", false, a},
-			{"/bar", false, b},
+			{"/foo", ExactRoute, a},
+			{"/bar", ExactRoute, b},
 		},
 		checks: []Check{
 			{"/foo", true, a},
@@ -92,8 +92,8 @@ var lookupExamples = []LookupExample{
 	},
 	{ // a prefix route
 		registrations: []Registration{
-			{"/foo", true, a},
-			{"/bar", false, b},
+			{"/foo", PrefixRoute, a},
+			{"/bar", ExactRoute, b},
 		},
 		checks: []Check{
 			{"/foo", true, a},
@@ -102,10 +102,40 @@ var lookupExamples = []LookupExample{
 			{"/foo/bar", true, a},
 		},
 	},
+	{ // a suffix route
+		registrations: []Registration{
+			{"/info", SuffixRoute, a},
+		},
+		checks: []Check{
+			{"/info", true, a},
+			{"/foo/info", true, a},
+			{"/foo/bar/info", true, a},
+		},
+	},
+	{ // a suffix route under a prefix route
+		registrations: []Registration{
+			{"/", PrefixRoute, a},
+			{"/info", SuffixRoute, b},
+		},
+		checks: []Check{
+			{"/info", true, b},
+			{"/foo", true, a},
+			{"/foo/bar/info", true, b},
+		},
+	},
+	{ // a suffix route that blats an exact route
+		registrations: []Registration{
+			{"/foo/info", ExactRoute, a},
+			{"/info", SuffixRoute, b},
+		},
+		checks: []Check{
+			{"/foo/info", true, b},
+		},
+	},
 	{ // a prefix route with an exact route child
 		registrations: []Registration{
-			{"/foo", true, a},
-			{"/foo/bar", false, b},
+			{"/foo", PrefixRoute, a},
+			{"/foo/bar", ExactRoute, b},
 		},
 		checks: []Check{
 			{"/foo", true, a},
@@ -116,9 +146,9 @@ var lookupExamples = []LookupExample{
 	},
 	{ // a prefix route with an exact route child with a prefix route child
 		registrations: []Registration{
-			{"/foo", true, a},
-			{"/foo/bar", false, b},
-			{"/foo/bar/baz", true, c},
+			{"/foo", PrefixRoute, a},
+			{"/foo/bar", ExactRoute, b},
+			{"/foo/bar/baz", PrefixRoute, c},
 		},
 		checks: []Check{
 			{"/foo", true, a},
@@ -131,8 +161,8 @@ var lookupExamples = []LookupExample{
 	},
 	{ // a prefix route with an exact route at the same level
 		registrations: []Registration{
-			{"/foo", false, a},
-			{"/foo", true, b},
+			{"/foo", ExactRoute, a},
+			{"/foo", PrefixRoute, b},
 		},
 		checks: []Check{
 			{"/foo", true, a},
@@ -143,7 +173,7 @@ var lookupExamples = []LookupExample{
 	},
 	{ // prefix route on the root
 		registrations: []Registration{
-			{"/", true, a},
+			{"/", PrefixRoute, a},
 		},
 		checks: []Check{
 			{"/anything", true, a},
@@ -155,8 +185,8 @@ var lookupExamples = []LookupExample{
 	},
 	{ // exact route on the root
 		registrations: []Registration{
-			{"/", false, a},
-			{"/foo", false, b},
+			{"/", ExactRoute, a},
+			{"/foo", ExactRoute, b},
 		},
 		checks: []Check{
 			{"/", true, a},
@@ -164,6 +194,16 @@ var lookupExamples = []LookupExample{
 			{"/bar", false, nil},
 		},
 	},
+}
+
+func routeTypeName(r routeType) string {
+	name := "exact"
+	if r == PrefixRoute {
+		name = "prefix"
+	} else if r == SuffixRoute {
+		name = "suffix"
+	}
+	return name
 }
 
 func TestLookup(t *testing.T) {
@@ -175,8 +215,8 @@ func TestLookup(t *testing.T) {
 func testLookup(t *testing.T, ex LookupExample) {
 	mux := NewMux()
 	for _, r := range ex.registrations {
-		t.Logf("Register(path:%v, prefix:%v, handler:%v)", r.path, r.prefix, r.handler)
-		mux.Handle(r.path, r.prefix, r.handler)
+		t.Logf("Register(path:%v, rtype:%v, handler:%v)", r.path, routeTypeName(r.rtype), r.handler)
+		mux.Handle(r.path, r.rtype, r.handler)
 	}
 	for _, c := range ex.checks {
 		handler, ok := mux.lookup(c.path)
@@ -190,15 +230,15 @@ func testLookup(t *testing.T, ex LookupExample) {
 }
 
 var statsExample = []Registration{
-	{"/", false, a},
-	{"/foo", true, a},
-	{"/bar", false, a},
+	{"/", ExactRoute, a},
+	{"/foo", PrefixRoute, a},
+	{"/bar", ExactRoute, a},
 }
 
 func TestRouteCount(t *testing.T) {
 	mux := NewMux()
 	for _, reg := range statsExample {
-		mux.Handle(reg.path, reg.prefix, reg.handler)
+		mux.Handle(reg.path, reg.rtype, reg.handler)
 	}
 	actual := mux.RouteCount()
 	if actual != 3 {
@@ -210,8 +250,8 @@ func TestChecksum(t *testing.T) {
 	mux := NewMux()
 	hash := sha1.New()
 	for _, reg := range statsExample {
-		mux.Handle(reg.path, reg.prefix, reg.handler)
-		hash.Write([]byte(fmt.Sprintf("%s(%v)", reg.path, reg.prefix)))
+		mux.Handle(reg.path, reg.rtype, reg.handler)
+		hash.Write([]byte(fmt.Sprintf("%s(%v)", reg.path, routeTypeName(reg.rtype))))
 	}
 	expected := fmt.Sprintf("%x", hash.Sum(nil))
 	actual := fmt.Sprintf("%x", mux.RouteChecksum())
@@ -232,10 +272,10 @@ func benchSetup() *Mux {
 	routes := loadStrings("testdata/routes")
 
 	tm := NewMux()
-	tm.Handle("/government", true, a)
+	tm.Handle("/government", PrefixRoute, a)
 
 	for _, l := range routes {
-		tm.Handle(l, false, b)
+		tm.Handle(l, ExactRoute, b)
 	}
 	return tm
 }

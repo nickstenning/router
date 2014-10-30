@@ -22,10 +22,13 @@ type Mux struct {
 	checksum   hash.Hash
 }
 
-type muxEntry struct {
-	prefix  bool
-	handler http.Handler
-}
+type routeType int
+
+const (
+	PrefixRoute routeType = iota
+	SuffixRoute
+	ExactRoute
+)
 
 // NewMux makes a new empty Mux.
 func NewMux() *Mux {
@@ -73,38 +76,38 @@ func (mux *Mux) lookup(path string) (handler http.Handler, ok bool) {
 		return nil, false
 	}
 
-	entry, ok := val.(muxEntry)
+	entry, ok := val.(http.Handler)
 	if !ok {
-		log.Printf("lookup: got value (%v) from trie that wasn't a muxEntry!", val)
+		log.Printf("lookup: got value (%v) from trie that wasn't a http.Handler!", val)
 		return nil, false
 	}
 
-	return entry.handler, ok
+	return entry, ok
 }
 
 // Handle registers the specified route (either an exact or a prefix route)
 // and associates it with the specified handler. Requests through the mux for
 // paths matching the route will be passed to that handler.
-func (mux *Mux) Handle(path string, prefix bool, suffix bool, handler http.Handler) {
+func (mux *Mux) Handle(path string, rtype routeType, handler http.Handler) {
 	mux.mu.Lock()
 	defer mux.mu.Unlock()
 
-	mux.addToStats(path, prefix, suffix)
-	if prefix {
-		mux.prefixTrie.Set(splitpath(path), muxEntry{true, handler})
-	} else if suffix {
-		mux.suffixTrie.Set(splitpath(path), muxEntry{true, handler})
+	mux.addToStats(path, rtype)
+	if rtype == PrefixRoute {
+		mux.prefixTrie.Set(splitpath(path), handler)
+	} else if rtype == SuffixRoute {
+		mux.suffixTrie.Set(splitpath(path), handler)
 	} else {
-		mux.exactTrie.Set(splitpath(path), muxEntry{false, handler})
+		mux.exactTrie.Set(splitpath(path), handler)
 	}
 }
 
-func (mux *Mux) addToStats(path string, prefix bool, suffix bool) {
+func (mux *Mux) addToStats(path string, rtype routeType) {
 	mux.count++
 	mux.checksum.Write([]byte(path))
-	if prefix {
+	if rtype == PrefixRoute {
 		mux.checksum.Write([]byte("(prefix)"))
-	} else if suffix {
+	} else if rtype == SuffixRoute {
 		mux.checksum.Write([]byte("(suffix)"))
 	} else {
 		mux.checksum.Write([]byte("(exact)"))
